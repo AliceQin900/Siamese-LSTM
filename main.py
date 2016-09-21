@@ -1,24 +1,31 @@
-from lstm import *
-#training=True # Set to false to load weights
-#Syn_aug=True # it False faster but does slightly worse on Test dataset
+from model.lstm import *
+from preprocess import *
 
-sls=lstm("bestsem.p",load=True,training=False)
 
-train=pickle.load(open("stsallrmf.p","rb"))#[:-8]
-if training==True:
-    print "Pre-training"
-    sls.train_lstm(train,66)
-    print "Pre-training done"
-    train=pickle.load(open("semtrain.p",'rb'))
-    if Syn_aug==True:
-        train=expand(train)
-        sls.train_lstm(train,375)
+if __name__ == "__main__":
+
+    pre_training = False # Set to true to load weights
+    Syn_aug = False # it False faster but does slightly worse on Test dataset
+
+
+    sls = lstm("lstm", training=True)
+
+    if pre_training == True:
+        print "Pre-training"
+        train = pickle.load(open("stsallrmf.p", "rb"))
+        sls.train_lstm(train, 66)
+        print "Pre-training done"
+
+    # Train Step
+    train = pickle.load(open("semtrain.p", 'rb'))
+    test = pickle.load(open("semtest.p", 'rb'))
+
+    if Syn_aug == True:
+        train = expand(train)
+        sls.train_lstm(train, 375, test)
     else:
-        sls.train_lstm(train,330)
+        sls.train_lstm(train, 330, test)
 
-test=pickle.load(open("semtest.p",'rb'))
-print sls.chkterr2(test)
-#Example
-sa="A truly wise man"
-sb="He is smart"
-print sls.predict_similarity(sa,sb)*4.0+1.0
+    # Test Step
+    test = pickle.load(open("semtest.p", 'rb'))
+    print sls.chkterr2(test)
