@@ -1,50 +1,26 @@
 # coding: utf-8
-import gensim
-from gensim.models import word2vec
-import pickle
 import numpy as np
 import numpy
 import pickle
 from random import *
+import scipy.stats as meas
+from collections import OrderedDict
+import time
+import theano
 import theano.tensor as T
+import theano.tensor as tensor
+from theano import config
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+
+from preprocess import *
 
 
 def _p(pp, name):
     return '%s_%s' % (pp, name)
 
-import scipy.stats as meas
-
-from collections import OrderedDict
-import pickle as pkl
-import random
-import sys
-import time
-
-import numpy
-import theano
-from theano import config
-import theano.tensor as tensor
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from preprocess import *
-
-
-# In[1]:
-
 
 def numpy_floatX(data):
-    return numpy.asarray(data, dtype=config.floatX)
-
-
-def zipp(params, tparams):
-    for kk, vv in params.iteritems():
-        tparams[kk].set_value(vv)
-
-
-def unzip(zipped):
-    new_params = OrderedDict()
-    for kk, vv in zipped.iteritems():
-        new_params[kk] = vv.get_value()
-    return new_params
+    return numpy.array(data, dtype=config.floatX)
 
 
 def init_tparams(params):
@@ -54,14 +30,12 @@ def init_tparams(params):
     return tparams
 
 
-def get_layer(name):
-    fns = layers[name]
-    return fns
 
 
-# In[2]:
+
 
 def genm(mu, sigma, n1, n2):
+    #return np.random.rand(n1, n2)
     return np.random.normal(mu, sigma, (n1, n2))
 
 
@@ -77,9 +51,9 @@ def getlayerx(d, pref, n, nin):
     W = np.array(W, dtype=np.float32)
 
     d[_p(pref, 'U')] = U
-    # b = numpy.zeros((n * 300,))+1.5
+
     b = np.random.uniform(-0.5, 0.5, size=(4 * n,))
-    b[n:n * 2] = 1.5
+    #b[n:n * 2] = 1.5
     d[_p(pref, 'W')] = W
     d[_p(pref, 'b')] = b.astype(config.floatX)
     return d
@@ -87,13 +61,10 @@ def getlayerx(d, pref, n, nin):
 
 def creatrnnx():
     newp = OrderedDict()
-    # print ("Creating neural network")
+    print ("Creating neural network")
     newp = getlayerx(newp, '1lstm1', 50, 300)
     newp = getlayerx(newp, '2lstm1', 50, 300)
     return newp
-
-
-# In[3]:
 
 
 def dropout_layer(state_before, use_noise, rrng, rate):
@@ -196,54 +167,6 @@ def adadelta(lr, tparams, grads, emb11, mask11, emb21, mask21, y, cost):
     return f_grad_shared, f_update
 
 
-def sgd(lr, tparams, grads, emb11, mask11, emb21, mask21, y, cost):
-    gshared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
-               for k, p in tparams.iteritems()]
-    gsup = [(gs, g) for gs, g in zip(gshared, grads)]
-    f_grad_shared = theano.function([emb11, mask11, emb21, mask21, y], cost, updates=gsup,
-                                    name='sgd_f_grad_shared')
-    pup = [(p, p - lr * g) for p, g in zip(tparams.values(), gshared)]
-    f_update = theano.function([lr], [], updates=pup,
-                               name='sgd_f_update')
-
-    return f_grad_shared, f_update
-
-
-def rmsprop(lr, tparams, grads, emb11, mask11, emb21, mask21, y, cost):
-    zipped_grads = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                  name='%s_grad' % k)
-                    for k, p in tparams.iteritems()]
-    running_grads = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                   name='%s_rgrad' % k)
-                     for k, p in tparams.iteritems()]
-    running_grads2 = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                    name='%s_rgrad2' % k)
-                      for k, p in tparams.iteritems()]
-
-    zgup = [(zg, g) for zg, g in zip(zipped_grads, grads)]
-    rgup = [(rg, 0.95 * rg + 0.05 * g) for rg, g in zip(running_grads, grads)]
-    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
-             for rg2, g in zip(running_grads2, grads)]
-
-    f_grad_shared = theano.function([emb11, mask11, emb21, mask21, y], cost,
-                                    updates=zgup + rgup + rg2up,
-                                    name='rmsprop_f_grad_shared')
-
-    updir = [theano.shared(p.get_value() * numpy_floatX(0.),
-                           name='%s_updir' % k)
-             for k, p in tparams.iteritems()]
-    updir_new = [(ud, 0.9 * ud - 1e-4 * zg / tensor.sqrt(rg2 - rg ** 2 + 1e-4))
-                 for ud, zg, rg, rg2 in zip(updir, zipped_grads, running_grads,
-                                            running_grads2)]
-    param_up = [(p, p + udn[1])
-                for p, udn in zip(tparams.values(), updir_new)]
-    f_update = theano.function([lr], [], updates=updir_new + param_up,
-                               on_unused_input='ignore',
-                               name='rmsprop_f_update')
-
-    return f_grad_shared, f_update
-
-
 class lstm():
     def __init__(self, nam, load=False, training=False):
         newp = creatrnnx()
@@ -266,32 +189,35 @@ class lstm():
 
         proj11 = getpl2(emb11, '1lstm1', mask11, False, rrng, 50, tnewp)[-1]
         proj21 = getpl2(emb21, '2lstm1', mask21, False, rrng, 50, tnewp)[-1]
+
         dif = (proj21 - proj11).norm(L=1, axis=1)
         s2 = T.exp(-dif)
-        sim = T.clip(s2, 1e-7, 1.0 - 1e-7)
+        sim = s2  # sim = T.clip(s2, 1e-7, 1.0 - 1e-7)
         lr = tensor.scalar(name='lr')
-        ys = T.clip((y - 1.0) / 4.0, 1e-7, 1.0 - 1e-7)
+        ys = (y - 1.0) / 4.0  # ys = T.clip((y - 1.0) / 4.0, 1e-7, 1.0 - 1e-7)
         cost = T.mean((sim - ys) ** 2)
 
+        self.proj11 = theano.function([emb11, mask11], proj11, allow_input_downcast=True)
+        self.emb11 = theano.function([emb11], emb11)
         self.f2sim = theano.function([emb11, mask11, emb21, mask21], sim, allow_input_downcast=True)
-        # self.f_proj11 = theano.function([emb11, mask11], proj11, allow_input_downcast=True)
         self.f_cost = theano.function([emb11, mask11, emb21, mask21, y], cost, allow_input_downcast=True)
 
         if training == True:
 
             gradi = tensor.grad(cost, tnewp.values())  # /bts
+            for p in tnewp:
+                print p
             grads = []
             l = len(gradi)
             for i in range(0, l / 2):
-                gravg = (gradi[i] + gradi[i + l / 2]) / (4.0)
+                gravg = (gradi[i] + gradi[i + l / 2]) / (2.0)
                 # print i,i+9
                 grads.append(gravg)
             for i in range(0, len(tnewp.keys()) / 2):
                 grads.append(grads[i])
-
             self.f_grad_shared, self.f_update = adadelta(lr, tnewp, grads, emb11, mask11, emb21, mask21, y, cost)
 
-    def train_lstm(self, train, max_epochs, val):
+    def train_lstm(self, train, max_epochs, val=None):
         print "Training"
         crer = []
         cr = 1.6
@@ -334,10 +260,18 @@ class lstm():
 
                 cst = self.f_grad_shared(emb2, mas2, emb1, mas1, y2)
                 s = self.f_update(lrate)
+
+                # emb1 = self.emb11(emb1)
+                # fw = open('emb1.pkl', 'wb')
+                # pickle.dump(emb1, fw)
+
+                # emb11 = self.emb11.eval()
+                # fw = open('emb11    .pkl', 'wb')
+                # pickle.dump(emb11, fw)
+                # exit()
                 # s=f_update(lrate)
                 if np.mod(freq, dfreq) == 0:
                     print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
-
 
             x1, mas1, x2, mas2, y2 = prepare_data(train)
             ls = []
@@ -355,25 +289,25 @@ class lstm():
 
             print "pearsonr = ", meas.pearsonr(preds, y2)[0]
 
-            x1, mas1, x2, mas2, y2 = prepare_data(val)
-            ls = []
-            ls2 = []
-            use_noise.set_value(1.)
-            for j in range(0, len(x1)):
-                ls.append(embed(x1[j]))
-                ls2.append(embed(x2[j]))
-            trconv = np.dstack(ls)
-            trconv2 = np.dstack(ls2)
-            emb1 = np.swapaxes(trconv, 1, 2)
-            emb2 = np.swapaxes(trconv2, 1, 2)
+            if val != None:
+                x1, mas1, x2, mas2, y2 = prepare_data(val)
+                ls = []
+                ls2 = []
+                use_noise.set_value(1.)
+                for j in range(0, len(x1)):
+                    ls.append(embed(x1[j]))
+                    ls2.append(embed(x2[j]))
+                trconv = np.dstack(ls)
+                trconv2 = np.dstack(ls2)
+                emb1 = np.swapaxes(trconv, 1, 2)
+                emb2 = np.swapaxes(trconv2, 1, 2)
 
-            preds = (self.f2sim(emb1, mas1, emb2, mas2)) * 4.0 + 1.0
+                preds = (self.f2sim(emb1, mas1, emb2, mas2)) * 4.0 + 1.0
 
-            print "pearsonr = ", meas.pearsonr(preds, y2)[0]
+                print "pearsonr = ", meas.pearsonr(preds, y2)[0]
 
             sto = time.time()
             print "epoch took:", sto - sta
-
 
     def chkterr2(self, mydata):
         """
@@ -423,7 +357,7 @@ class lstm():
         ls = []
         ls2 = []
         use_noise.set_value(0.)
-        for j   in range(0, len(x1)):
+        for j in range(0, len(x1)):
             ls.append(embed(x1[j]))
             ls2.append(embed(x2[j]))
         trconv = np.dstack(ls)

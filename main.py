@@ -4,8 +4,8 @@ from preprocess import *
 
 if __name__ == "__main__":
 
-    pre_training = False # Set to true to load weights
-    Syn_aug = False # it False faster but does slightly worse on Test dataset
+    pre_training = True # Set to true to load weights
+    Syn_aug = True # it False faster but does slightly worse on Test dataset
 
 
     sls = lstm("lstm", training=True)
@@ -22,9 +22,9 @@ if __name__ == "__main__":
 
     if Syn_aug == True:
         train = expand(train)
-        sls.train_lstm(train, 375, test)
+        sls.train_lstm(train, 100, test)
     else:
-        sls.train_lstm(train, 330, test)
+        sls.train_lstm(train, 100, test)
 
     # Test Step
     test = pickle.load(open("semtest.p", 'rb'))

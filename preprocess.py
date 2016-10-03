@@ -62,6 +62,8 @@ def embed(stmx):
         if stmx[count] == ',':
             count += 1
             continue
+        if stmx[count] in model:
+            dmtr[count] = model[stmx[count]]
         if stmx[count] in dtr:
             dmtr[count] = model[dtr[stmx[count]]]
             count += 1
@@ -152,7 +154,6 @@ def expand(data):
             if cnt1 > 0 and cnt2 > 0:
                 l1 = [sa, sb, i[2]]
                 n.append(l1)
-    print len(n)
     for i in n:
         if check(i[0], i[1], data):
             data.append(i)
